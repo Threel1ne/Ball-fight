@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Ball Battle System</title>
+<style>
+:root{--bg:#0a0e14;--panel:#151b24;--line:#2b3644;--red:#ff4d4d;--green:#2ecc71;--yel:#ffd21f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+body{margin:0;background:var(--bg);color:#e8eef5;font-family:system-ui,-apple-system,sans-serif;
+     min-height:100vh;display:flex;flex-direction:column}
+.hide{display:none!important}
+button{font:inherit;font-weight:800;border:2px solid var(--line);background:var(--panel);
+       color:#e8eef5;border-radius:14px;cursor:pointer}
+button:active{transform:scale(.97)}
+
+/* ---- role picker ---- */
+#pick{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+#pick h1{font-size:16px;letter-spacing:.2em;color:#8a97a6;text-transform:uppercase;margin:0 0 8px}
+#pick button{width:100%;max-width:320px;padding:22px;font-size:19px}
+#pick .r{border-color:var(--red);color:var(--red)}
+#pick .g{border-color:var(--green);color:var(--green)}
+
+/* ---- clicker ---- */
+#clicker{flex:1;display:none;flex-direction:column;padding:14px;gap:12px}
+.hdr{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#8a97a6;letter-spacing:.1em}
+.big{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     border-radius:24px;border:3px solid;font-size:clamp(80px,30vw,180px);font-weight:900;
+     font-variant-numeric:tabular-nums;line-height:1}
+.big small{font-size:14px;letter-spacing:.2em;font-weight:700;opacity:.6;margin-top:8px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row button{padding:20px;font-size:18px}
+#yellowBtn{padding:20px;font-size:17px;border-color:var(--yel);color:var(--yel);background:#2e2500}
+#yellowBtn.taken{opacity:.35}
+#minus{background:#241418;border-color:#5a2a30}
+
+/* ---- display ---- */
+#display{flex:1;display:none;flex-direction:column;padding:18px;gap:14px;text-align:center}
+#clock{font-size:clamp(56px,16vw,120px);font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+#clock.warn{color:var(--yel)} #clock.crit{color:var(--red);animation:p .6s infinite alternate}
+@keyframes p{to{opacity:.4}}
+.scores{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1}
+.sc{border:3px solid;border-radius:20px;padding:18px;display:flex;flex-direction:column;justify-content:center}
+.sc .nm{font-size:15px;letter-spacing:.15em;font-weight:800}
+.sc .pts{font-size:clamp(60px,18vw,130px);font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.sc .det{font-size:14px;color:#8a97a6;margin-top:6px}
+.sc .yb{color:var(--yel);font-size:14px;font-weight:800;margin-top:4px;min-height:18px}
+.dctl{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.dctl button{padding:14px 22px;font-size:15px}
+#startBtn{background:#12602f;border-color:#1d8a45}
+#winner{font-size:20px;font-weight:900;letter-spacing:.08em;min-height:26px}
+.red{border-color:var(--red)!important;color:var(--red)}
+.green{border-color:var(--green)!important;color:var(--green)}
+#conn{font-size:11px;color:#5c6875;letter-spacing:.08em}
+</style>
+</head>
+<body>
+
+<div id="pick">
+  <h1>Select this device's role</h1>
+  <button onclick="setRole('display')">📺 DISPLAY / REFEREE</button>
+  <button class="r" onclick="setRole('red')">🔴 TEAM RED CLICKER</button>
+  <button class="g" onclick="setRole('green')">🟢 TEAM GREEN CLICKER</button>
+  <div id="conn">Open this same page on all 3 devices</div>
+</div>
+
+<div id="clicker">
+  <div class="hdr"><span id="cName"></span><span id="cTime">2:00</span></div>
+  <div class="big" id="cBig" onclick="score()"><span id="cCount">0</span><small id="cLeft">30 BALLS LEFT</small></div>
+  <button id="yellowBtn" onclick="yellow()">⭐ YELLOW BALL — 3 PTS</button>
+  <div class="row">
+    <button id="minus" onclick="score(-1)">− Undo</button>
+    <button onclick="location.reload()">Change role</button>
+  </div>
+</div>
+
+<div id="display">
+  <div class="hdr" style="justify-content:center">BALL BATTLE · 2:00 MATCH</div>
+  <div id="clock">2:00</div>
+  <div id="winner"></div>
+  <div class="scores">
+    <div class="sc red"><div class="nm">TEAM RED</div><div class="pts" id="rPts">0</div>
+      <div class="det" id="rDet">0/30 balls</div><div class="yb" id="rYb"></div></div>
+    <div class="sc green"><div class="nm">TEAM GREEN</div><div class="pts" id="gPts">0</div>
+      <div class="det" id="gDet">0/30 balls</div><div class="yb" id="gYb"></div></div>
+  </div>
+  <div class="dctl">
+    <button id="startBtn" onclick="toggle()">Start</button>
+    <button onclick="reset()">Reset Match</button>
+    <button onclick="location.reload()">Change role</button>
+  </div>
+</div>
+
+<script>
+const KEY='ballbattle:state', DUR=120, MAX=30;
+let role=null, S=null, tick=null;
+
+const fresh=()=>({red:{b:0,y:false},green:{b:0,y:false},end:Date.now()+DUR*1000,running:false,left:DUR,ver:0});
+
+async function load(){
+  try{const r=await window.storage.get(KEY,true); S=r?JSON.parse(r.value):fresh();}
+  catch(e){S=fresh();}
+}
+async function save(){
+  S.ver++;
+  try{await window.storage.set(KEY,JSON.stringify(S),true);}catch(e){}
+  paint();
+}
+function secsLeft(){
+  if(!S) return DUR;
+  return S.running?Math.max(0,Math.round((S.end-Date.now())/1000)):S.left;
+}
+const pts=t=>S[t].b + (S[t].y?3:0);
+const mmss=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+
+function paint(){
+  if(!S) return;
+  const t=secsLeft();
+  if(role==='display'){
+    const c=document.getElementById('clock');
+    c.textContent=mmss(t);
+    c.className = t<=10?'crit':t<=30?'warn':'';
+    document.getElementById('startBtn').textContent=S.running?'Pause':'Start';
+    for(const [k,p] of [['red','r'],['green','g']]){
+      document.getElementById(p+'Pts').textContent=pts(k);
+      document.getElementById(p+'Det').textContent=S[k].b+'/'+MAX+' balls';
+      document.getElementById(p+'Yb').textContent=S[k].y?'⭐ YELLOW BALL +3':'';
+    }
+    const w=document.getElementById('winner');
+    if(t<=0 && !S.running){
+      const r=pts('red'),g=pts('green');
+      w.textContent = r===g?'DRAW':(r>g?'🔴 RED WINS':'🟢 GREEN WINS');
+      w.className = r===g?'':(r>g?'red':'green');
+    } else w.textContent='';
+  } else if(role){
+    document.getElementById('cTime').textContent=mmss(t);
+    document.getElementById('cCount').textContent=pts(role);
+    document.getElementById('cLeft').textContent=(MAX-S[role].b)+' BALLS LEFT';
+    document.getElementById('yellowBtn').classList.toggle('taken',S[role].y||(S.red.y||S.green.y));
+  }
+}
+
+function beep(f,d){try{const c=new(window.AudioContext||webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();
+o.connect(g);g.connect(c.destination);o.type='square';o.frequency.value=f;g.gain.value=.12;
+o.start();o.stop(c.currentTime+d);}catch(e){}}
+
+async function score(d=1){
+  await load();
+  if(secsLeft()<=0||!S.running) return;
+  const n=S[role].b+d;
+  if(n<0||n>MAX) return;
+  S[role].b=n; beep(d>0?900:400,.06); await save();
+}
+async function yellow(){
+  await load();
+  if(secsLeft()<=0||!S.running) return;
+  if(S.red.y||S.green.y) return;          // only one team can get it
+  S[role].y=true; beep(1400,.25); await save();
+}
+async function toggle(){
+  await load();
+  if(S.running){ S.left=secsLeft(); S.running=false; }
+  else { if(S.left<=0)return; S.end=Date.now()+S.left*1000; S.running=true; }
+  await save();
+}
+async function reset(){ S=fresh(); await save(); }
+
+async function setRole(r){
+  role=r;
+  document.getElementById('pick').classList.add('hide');
+  if(r==='display'){ document.getElementById('display').style.display='flex'; }
+  else{
+    const el=document.getElementById('clicker'); el.style.display='flex';
+    document.getElementById('cName').textContent='TEAM '+r.toUpperCase();
+    const b=document.getElementById('cBig');
+    b.style.borderColor = r==='red'?'#ff4d4d':'#2ecc71';
+    b.style.color = r==='red'?'#ff4d4d':'#2ecc71';
+  }
+  await load(); paint();
+  tick=setInterval(async()=>{
+    const before=S?S.ver:-1;
+    await load();
+    if(S.running&&secsLeft()<=0){ S.running=false; S.left=0; await save(); beep(200,.8); return; }
+    paint();
+  },700);
+}
+</script>
+</body>
+</html>
